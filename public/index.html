@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>PowerFedora50</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%231f4e8c'/%3E%3Cpath d='M7 21l6-7 4 4 8-9' fill='none' stroke='%23fff' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <div>
+      <h1>PowerFedora50 <span class="brand-sub">优质股池研究系统</span></h1>
+      <p id="status" class="status" role="status">正在连接…</p>
+    </div>
+    <div class="actions">
+      <button id="btn-refresh" type="button" class="btn primary">刷新行情</button>
+      <button id="btn-full" type="button" class="btn" title="重新下载全部日线和新闻（约十几秒）">全量更新</button>
+    </div>
+  </header>
+
+  <div id="banner" class="banner" hidden></div>
+
+  <nav class="tabs" id="nav" aria-label="功能">
+    <a href="#/dashboard" data-route="dashboard">看板</a>
+    <a href="#/screener" data-route="screener">在线选股</a>
+    <a href="#/report" data-route="report">晨报</a>
+    <a href="#/pool" data-route="pool">股池管理</a>
+    <a href="#/alerts" data-route="alerts">提醒</a>
+    <a href="#/journal" data-route="journal">交易日志</a>
+    <a href="#/settings" data-route="settings">设置</a>
+  </nav>
+
+  <main id="view"></main>
+
+  <footer class="fine">数据来自东方财富公开接口。技术点位是均线与高低点的计算结果，仅供复盘参考，不构成投资建议。系统只在股池内选股：提醒和交易日志都不接受池外股票。</footer>
+</div>
+
+<dialog id="stock-dlg" aria-labelledby="d-name">
+  <div class="dlg">
+    <div class="dlg-head">
+      <div>
+        <h2 id="d-name">—</h2>
+        <span class="muted" id="d-sector"></span>
+      </div>
+      <div class="dlg-px"><b class="big" id="d-px">—</b> <b class="chg" id="d-chg">—</b></div>
+      <div class="dlg-actions">
+        <button id="d-prev" type="button" class="btn" aria-label="查看上一只股票">上一只</button>
+        <button id="d-next" type="button" class="btn" aria-label="查看下一只股票">下一只</button>
+        <button id="d-alert" type="button" class="btn">设提醒</button>
+        <button id="d-trade" type="button" class="btn">记一笔</button>
+        <a id="d-link" class="btn" href="#" target="_blank" rel="noopener">东方财富</a>
+        <button id="d-close" type="button" class="btn">关闭</button>
+      </div>
+    </div>
+    <div class="tags" id="d-tags"></div>
+    <div class="range" id="d-range">
+      <span class="muted small">显示</span>
+      <button type="button" class="chip" data-range="60" aria-pressed="false">60 天</button>
+      <button type="button" class="chip" data-range="120" aria-pressed="true">120 天</button>
+      <button type="button" class="chip" data-range="250" aria-pressed="false">250 天</button>
+    </div>
+    <div class="range" id="d-indicators" aria-label="K线指标">
+      <span class="muted small">指标</span>
+      <label class="indicator-toggle"><input type="checkbox" data-indicator="ma"> MA（5/10/20/60）</label>
+      <label class="indicator-toggle"><input type="checkbox" data-indicator="ema"> EMA（13/34/55）</label>
+      <label class="indicator-toggle"><input type="checkbox" data-indicator="bbi" checked> BBI</label>
+      <label class="indicator-toggle"><input type="checkbox" data-indicator="boll" checked> BOLL（20,2）</label>
+    </div>
+    <div class="kbox" id="d-chart"></div>
+    <div class="levels" id="d-levels"></div>
+    <p class="note" id="d-note"></p>
+    <p class="note" id="d-us"></p>
+    <h3>最新新闻</h3>
+    <div class="news" id="d-news"></div>
+    <p class="fine">K 线为前复权日线，红涨绿跌；可按需显示 MA、EMA、BBI 或 BOLL；中间是成交额，下方是 MACD（12, 26, 9）。止损参考 = 支撑 1 减一个 ATR（14 日平均波幅），只是常见的风控算法示例。</p>
+  </div>
+</dialog>
+
+<div id="toasts" class="toasts" aria-live="polite"></div>
+
+<script src="js/indicators.js"></script>
+<script src="js/chart.js"></script>
+<script src="js/chart-intraday.js"></script>
+<script src="js/util.js"></script>
+<script src="js/stock-dialog.js"></script>
+<script src="js/view-dashboard.js"></script>
+<script src="js/view-screener.js"></script>
+<script src="js/view-report.js"></script>
+<script src="js/view-pool.js"></script>
+<script src="js/view-alerts.js"></script>
+<script src="js/view-journal.js"></script>
+<script src="js/view-settings.js"></script>
+<script src="js/main.js"></script>
+</body>
+</html>

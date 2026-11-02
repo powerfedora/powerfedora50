@@ -1,0 +1,13 @@
+{
+  "name": "powerfedora50",
+  "version": "1.0.0",
+  "description": "PowerFedora50：50 只优质股池的本地研究系统（行情、等权指数、K线、晨报、提醒、交易日志）",
+  "private": true,
+  "license": "UNLICENSED",
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "start": "node server.js",
+    "demo": "POWERFEDORA_MOCK=1 node server.js",
+    "test": "node --test test/*.test.js"
+  }
+}
