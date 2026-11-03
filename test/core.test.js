@@ -43,7 +43,39 @@ test('指标：均线、MACD、等权指数和基点日期', () => {
   assert.equal(boll.mid[18], null);
   assert.ok(Math.abs(boll.mid[19] - 10.5) < 1e-10);
   assert.ok(Math.abs((boll.upper[19] + boll.lower[19]) / 2 - boll.mid[19]) < 1e-10);
+  assert.equal(typeof IND.donchian, 'function');
+  const dc = IND.donchian(Array.from({ length: 20 }, (_, i) => ({ high: i + 2, low: i, close: i + 1 })));
+  assert.equal(dc.upper[18], null);
+  assert.equal(dc.upper[19], 21);
+  assert.equal(dc.lower[19], 0);
+  assert.equal(dc.mid[19], 10.5);
   const bars = (start) => Array.from({ length: 80 }, (_, i) => { const c = start + i; return { day: `2026-01-${String(i + 1).padStart(2, '0')}`, open: c, close: c, high: c + 1, low: c - 1, amount: 1 }; });
+  assert.equal(typeof IND.supertrend, 'function');
+  const st = IND.supertrend(bars(10));
+  assert.equal(st.line.length, bars(10).length);
+  assert.equal(st.direction.length, bars(10).length);
+  assert.equal(st.line[8], null);
+  assert.ok(Number.isFinite(st.line.at(-1)));
+  assert.equal(st.direction.at(-1), 1);
+  assert.equal(typeof IND.dmi, 'function');
+  const dmi = IND.dmi(bars(10));
+  assert.equal(dmi.plusDI.length, bars(10).length);
+  assert.ok(Number.isFinite(dmi.plusDI.at(-1)));
+  assert.ok(Number.isFinite(dmi.minusDI.at(-1)));
+  assert.ok(Number.isFinite(dmi.adx.at(-1)));
+  assert.ok(dmi.plusDI.at(-1) > dmi.minusDI.at(-1));
+  assert.equal(typeof IND.relativeStrength, 'function');
+  const benchBars = Array.from({ length: 21 }, (_, i) => ({ day: `2026-02-${String(i + 1).padStart(2, '0')}`, close: 100 + i }));
+  const stockBars = benchBars.map((b, i) => ({ ...b, close: 10 + i }));
+  const rs = IND.relativeStrength(stockBars, benchBars, 20);
+  assert.ok(Math.abs(rs.stockReturn - 200) < 1e-9);
+  assert.ok(Math.abs(rs.benchmarkReturn - 20) < 1e-9);
+  assert.ok(Math.abs(rs.value - 180) < 1e-9);
+  assert.equal(typeof IND.relativeStrengthSeries, 'function');
+  const rsLine = IND.relativeStrengthSeries(stockBars, benchBars, 20);
+  assert.equal(rsLine.length, stockBars.length);
+  assert.equal(rsLine[19], null);
+  assert.ok(Math.abs(rsLine[20] - 180) < 1e-9);
   const idx = IND.poolIndex({ a: bars(10), b: bars(20) }, 1000);
   assert.equal(idx[0].close, 1000);
   assert.ok(idx[10].close > 1000);
@@ -54,6 +86,38 @@ test('指标：均线、MACD、等权指数和基点日期', () => {
   assert.ok(an.s1 < an.px && an.r1 >= an.px);
   assert.deepEqual(IND.doubleGoldenCross(bars(10)), []);
   assert.equal(IND.bullishAboveBBI(bars(10)).ok, true);
+});
+
+test('K线：默认显示 Supertrend、Donchian 与 RS20，BBI 与 BOLL 可选关闭', () => {
+  const dialog = fs.readFileSync(path.join(__dirname, '../public/js/stock-dialog.js'), 'utf8');
+  const chart = fs.readFileSync(path.join(__dirname, '../public/js/chart.js'), 'utf8');
+  const page = fs.readFileSync(path.join(__dirname, '../public/index.html'), 'utf8');
+  assert.match(dialog, /indicators: \{ ma: false, ema: false, bbi: false, boll: false, supertrend: true, donchian: true, rs20: true \}/);
+  assert.match(dialog, /supertrend: S\.indicators\.supertrend/);
+  assert.match(dialog, /rs20: S\.indicators\.rs20/);
+  assert.match(page, /data-indicator="boll"> BOLL/);
+  assert.match(page, /data-indicator="supertrend" checked/);
+  assert.match(page, /data-indicator="donchian" checked/);
+  assert.match(page, /data-indicator="rs20" checked> RS20 vs 沪深300/);
+  assert.match(chart, /IND\.supertrend\(bars, 10, 3\)/);
+  assert.match(chart, /IND\.donchian\(bars, 20\)/);
+  assert.match(chart, /IND\.relativeStrengthSeries\(bars, opts\.benchmarkBars, 20\)/);
+  assert.match(chart, /setRsReadout\(i\)/);
+  assert.match(chart, /RS20 vs 沪深300（百分点）/);
+  assert.match(chart, /v > 10/);
+  assert.match(chart, /var\(--up\)/);
+  assert.match(chart, /var\(--dea\)/);
+  assert.doesNotMatch(chart, /0：与沪深300同期持平；上方：跑赢/);
+  assert.match(chart, /Supertrend/);
+});
+
+test('在线选股：双金叉增加 DMI 与 ADX 趋势过滤', () => {
+  const service = fs.readFileSync(path.join(__dirname, '../src/service.js'), 'utf8');
+  const screener = fs.readFileSync(path.join(__dirname, '../public/js/view-screener.js'), 'utf8');
+  assert.match(service, /IND\.dmi\(bars\)/);
+  assert.match(service, /plusDI > minusDI && adx > 20 && adx > prevAdx/);
+  assert.match(screener, /\+DI > -DI/);
+  assert.match(screener, /ADX > 20 且上升/);
 });
 
 test('股池：初始 49 只、增删改和校验', () => {

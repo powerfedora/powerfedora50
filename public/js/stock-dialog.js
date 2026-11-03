@@ -1,7 +1,7 @@
 // 个股弹窗：K 线（均线、成交额、MACD）、点位、对标美股、新闻
 (function () {
   const { h, $, fmt, pct, sign } = PF;
-  const S = { code: null, navCodes: [], range: 120, offset: 0, data: null, ruler: { on: false, a: null, b: null }, indicators: { ma: false, ema: false, bbi: true, boll: true }, limitReasons: {}, pendingReasons: new Set() };
+  const S = { code: null, navCodes: [], range: 120, offset: 0, data: null, ruler: { on: false, a: null, b: null }, indicators: { ma: false, ema: false, bbi: false, boll: false, supertrend: true, donchian: true, rs20: true }, limitReasons: {}, pendingReasons: new Set() };
 
   function limitPct(p) {
     if (/^(300|301|688)/.test(p.code)) return 20;
@@ -88,7 +88,7 @@
     $('#d-indicators').querySelectorAll('[data-indicator]').forEach((x) => { x.checked = !!S.indicators[x.dataset.indicator]; });
     KChart.drawK($('#d-chart'), d.bars, {
       mas: S.indicators.ma ? [5, 10, 20, 60] : [], emaPeriods: S.indicators.ema ? [13, 34, 55] : [],
-      bbi: S.indicators.bbi, boll: S.indicators.boll, range: S.range, offset: S.offset, ruler: S.ruler,
+      bbi: S.indicators.bbi, boll: S.indicators.boll, supertrend: S.indicators.supertrend, donchian: S.indicators.donchian, rs20: S.indicators.rs20, benchmarkBars: d.benchmarkBars, range: S.range, offset: S.offset, ruler: S.ruler,
       isLimitUp: (bars, i) => isLimitUp(bars, i, p), limitReasons: S.limitReasons, onLimitUpHover: loadLimitReason,
       onPan: (off) => { S.offset = off; paint(); },
       onRange: (n) => {

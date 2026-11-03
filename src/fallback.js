@@ -3,13 +3,13 @@
 const COOLDOWN = 60 * 1000;
 
 function create(primary, backup) {
-  let downUntil = 0;
+  const downUntil = { quotes: 0, kline: 0 };
 
   async function withBackup(method, args, canBackup) {
-    if (Date.now() >= downUntil || !canBackup) {
+    if (Date.now() >= downUntil[method] || !canBackup) {
       try { return await primary[method](...args); } catch (e) {
         if (!canBackup) throw e;
-        downUntil = Date.now() + COOLDOWN;
+        downUntil[method] = Date.now() + COOLDOWN;
       }
     }
     return backup[method](...args);
@@ -21,10 +21,10 @@ function create(primary, backup) {
     // 混合请求（含美股等）先试主源；失败后只把沪深部分交给备用源，其余丢弃
     async quotes(secids) {
       const cn = secids.filter(backup.supports);
-      if (Date.now() >= downUntil || !cn.length) {
+      if (Date.now() >= downUntil.quotes || !cn.length) {
         try { return await primary.quotes(secids); } catch (e) {
           if (!cn.length) throw e;
-          downUntil = Date.now() + COOLDOWN;
+          downUntil.quotes = Date.now() + COOLDOWN;
         }
       }
       return backup.quotes(cn);

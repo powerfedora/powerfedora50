@@ -1,3 +1,5 @@
+const { Intelligence } = require('./intelligence');
+const { SectorService } = require('./sectors');
 // 应用装配 + HTTP 接口。零依赖：只用 Node 自带的 http / fs。
 const http = require('http');
 const fs = require('fs');
@@ -18,7 +20,7 @@ const MIME = {
   '.svg': 'image/svg+xml', '.json': 'application/json; charset=utf-8', '.ico': 'image/x-icon', '.png': 'image/png'
 };
 
-function build({ dataDir, provider, clock, hotspotSource }) {
+function build({ dataDir, provider, clock, hotspotSource, sectorFallbackStore }) {
   const store = new Store(dataDir);
   const pool = new Pool(store);
   const settings = new Settings(store);
@@ -27,8 +29,10 @@ function build({ dataDir, provider, clock, hotspotSource }) {
   service.alerts = alerts;
   const journal = new Journal({ store, pool });
   const reports = new Reports(store);
-  const scheduler = new Scheduler({ service, reports, clock });
-  return { store, pool, settings, service, alerts, journal, reports, scheduler };
+  const sectors = new SectorService({ store, service, fallbackStore: sectorFallbackStore });
+  const intelligence = new Intelligence({ store, pool, sectors, onUpdate: data => service.emit('intelligence', data) });
+  const scheduler = new Scheduler({ service, reports, clock, sectors, intelligence });
+  return { store, pool, settings, service, alerts, journal, reports, scheduler, sectors, intelligence };
 }
 
 const send = (res, status, body, headers = {}) => {
@@ -55,6 +59,7 @@ function createServer(ctx) {
   const push = (event, data) => { const msg = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`; for (const r of sse) r.write(msg); };
   service.on('update', (d) => push('update', d));
   service.on('news', (d) => push('news', d));
+  service.on('intelligence', (d) => push('intelligence', d));
   service.on('alert', (d) => push('alert', d));
   service.on('report', (d) => push('report', d));
 
@@ -62,6 +67,10 @@ function createServer(ctx) {
 
   // [方法, 路径正则, 处理函数(match, body, url) => 结果 | Promise]
   const routes = [
+    ['GET', /^\/api\/intelligence$/, () => ctx.intelligence.view()],
+    ['POST', /^\/api\/intelligence\/refresh$/, () => ctx.intelligence.refresh()],
+    ['GET', /^\/api\/sectors$/, () => ctx.sectors.get()],
+    ['POST', /^\/api\/sectors\/refresh$/, () => ctx.sectors.get(true)],
     ['GET', /^\/api\/overview$/, () => service.overview()],
     ['GET', /^\/api\/index$/, () => ({ bars: service.index, status: service.indexStatus, base: settings.get().indexBase, baseDate: settings.get().indexBaseDate })],
     ['GET', /^\/api\/stock\/(\d{6})$/, (m) => { needCode(m[1]); return service.stock(m[1]); }],

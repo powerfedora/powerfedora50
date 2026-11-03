@@ -28,6 +28,115 @@
     return { mid, upper, lower };
   }
 
+  // Donchian 通道：上/下轨为最近 N 根 K 线最高价与最低价，中轨为二者均值。
+  function donchian(bars, n = 20) {
+    const upper = new Array(bars.length).fill(null), lower = new Array(bars.length).fill(null), mid = new Array(bars.length).fill(null);
+    for (let i = n - 1; i < bars.length; i++) {
+      let hi = -Infinity, lo = Infinity;
+      for (let j = i - n + 1; j <= i; j++) { hi = Math.max(hi, bars[j].high); lo = Math.min(lo, bars[j].low); }
+      upper[i] = hi; lower[i] = lo; mid[i] = (hi + lo) / 2;
+    }
+    return { upper, lower, mid };
+  }
+
+  // Supertrend：以 Wilder 平滑 ATR 计算动态上下轨；direction 为 1（多头）或 -1（空头）。
+  // 首个可用值从第 length 根 K 线开始，此前保持 null，避免用不足周期的数据误导图表。
+  function supertrend(bars, length = 10, multiplier = 3) {
+    const line = new Array(bars.length).fill(null), direction = new Array(bars.length).fill(null);
+    if (!bars || bars.length < length) return { line, direction };
+    const tr = bars.map((b, i) => {
+      const pc = i ? bars[i - 1].close : b.close;
+      return Math.max(b.high - b.low, Math.abs(b.high - pc), Math.abs(b.low - pc));
+    });
+    let sum = 0, atr = null, finalUpper = null, finalLower = null;
+    for (let i = 0; i < bars.length; i++) {
+      sum += tr[i];
+      if (i < length - 1) continue;
+      atr = i === length - 1 ? sum / length : (atr * (length - 1) + tr[i]) / length;
+      const b = bars[i], hl2 = (b.high + b.low) / 2;
+      const upper = hl2 + multiplier * atr, lower = hl2 - multiplier * atr;
+      if (i === length - 1) {
+        finalUpper = upper; finalLower = lower; direction[i] = 1;
+      } else {
+        const prevClose = bars[i - 1].close;
+        finalUpper = upper < finalUpper || prevClose > finalUpper ? upper : finalUpper;
+        finalLower = lower > finalLower || prevClose < finalLower ? lower : finalLower;
+        direction[i] = direction[i - 1] === 1
+          ? (b.close < finalLower ? -1 : 1)
+          : (b.close > finalUpper ? 1 : -1);
+      }
+      line[i] = direction[i] === 1 ? finalLower : finalUpper;
+    }
+    return { line, direction };
+  }
+
+  // DMI/ADX：Wilder 平滑。+DI/-DI 给出方向，ADX 衡量趋势强度。
+  function dmi(bars, length = 14, adxLength = 14) {
+    const n = bars ? bars.length : 0;
+    const plusDI = new Array(n).fill(null), minusDI = new Array(n).fill(null), adx = new Array(n).fill(null), dx = new Array(n).fill(null);
+    if (!bars || n <= length) return { plusDI, minusDI, adx };
+    let smTR = 0, smPlus = 0, smMinus = 0, prevAdx = null;
+    for (let i = 1; i < n; i++) {
+      const b = bars[i], prev = bars[i - 1];
+      const upMove = b.high - prev.high, downMove = prev.low - b.low;
+      const plus = upMove > downMove && upMove > 0 ? upMove : 0;
+      const minus = downMove > upMove && downMove > 0 ? downMove : 0;
+      const tr = Math.max(b.high - b.low, Math.abs(b.high - prev.close), Math.abs(b.low - prev.close));
+      if (i <= length) {
+        smTR += tr; smPlus += plus; smMinus += minus;
+        if (i < length) continue;
+      } else {
+        smTR = smTR - smTR / length + tr;
+        smPlus = smPlus - smPlus / length + plus;
+        smMinus = smMinus - smMinus / length + minus;
+      }
+      plusDI[i] = smTR ? 100 * smPlus / smTR : 0;
+      minusDI[i] = smTR ? 100 * smMinus / smTR : 0;
+      const sumDI = plusDI[i] + minusDI[i];
+      dx[i] = sumDI ? 100 * Math.abs(plusDI[i] - minusDI[i]) / sumDI : 0;
+      if (i === length + adxLength - 1) {
+        let sumDX = 0;
+        for (let j = length; j <= i; j++) sumDX += dx[j];
+        prevAdx = sumDX / adxLength;
+        adx[i] = prevAdx;
+      } else if (i > length + adxLength - 1) {
+        prevAdx = (prevAdx * (adxLength - 1) + dx[i]) / adxLength;
+        adx[i] = prevAdx;
+      }
+    }
+    return { plusDI, minusDI, adx };
+  }
+
+  // 相对强弱 RS：股票与基准在相同交易日窗口内的涨跌幅之差，正值代表跑赢基准。
+  function relativeStrength(bars, benchmarkBars, periods = 20) {
+    if (!bars || !benchmarkBars) return null;
+    const stock = new Map(bars.map((b) => [b.day, b.close]));
+    const common = benchmarkBars.filter((b) => stock.has(b.day) && b.close > 0 && stock.get(b.day) > 0);
+    if (common.length <= periods) return null;
+    const end = common[common.length - 1], start = common[common.length - 1 - periods];
+    const stockStart = stock.get(start.day), stockEnd = stock.get(end.day);
+    const stockReturn = (stockEnd / stockStart - 1) * 100;
+    const benchmarkReturn = (end.close / start.close - 1) * 100;
+    return { value: stockReturn - benchmarkReturn, stockReturn, benchmarkReturn, start: start.day, end: end.day, periods };
+  }
+
+  // 与 relativeStrength 相同的口径，但逐日返回最近 periods 个共同交易日的收益差，和 bars 一一对齐。
+  // 数值单位为百分点；正数代表同期跑赢基准，负数代表跑输基准。
+  function relativeStrengthSeries(bars, benchmarkBars, periods = 20) {
+    const out = (bars || []).map(() => null);
+    if (!bars || !benchmarkBars || !bars.length) return out;
+    const stock = new Map(bars.map((b) => [b.day, b.close]));
+    const pos = new Map(bars.map((b, i) => [b.day, i]));
+    const common = benchmarkBars.filter((b) => stock.has(b.day) && b.close > 0 && stock.get(b.day) > 0);
+    for (let i = periods; i < common.length; i++) {
+      const start = common[i - periods], end = common[i];
+      const stockReturn = (stock.get(end.day) / stock.get(start.day) - 1) * 100;
+      const benchmarkReturn = (end.close / start.close - 1) * 100;
+      out[pos.get(end.day)] = stockReturn - benchmarkReturn;
+    }
+    return out;
+  }
+
   function macd(closes) {
     const e12 = ema(closes, 12), e26 = ema(closes, 26);
     const dif = closes.map((_, i) => e12[i] - e26[i]);
@@ -228,5 +337,5 @@
     return { ok: aligned && rising && aboveBBI, bbi: bbiNow, aboveBBI, aligned, rising };
   }
 
-  return { sma, ema, bbi, boll, macd, rsi, atr, analyze, poolIndex, indexStatus, flowTrend, flowStatus, doubleGoldenCross, bullishAboveBBI };
+  return { sma, ema, bbi, boll, donchian, supertrend, dmi, relativeStrength, relativeStrengthSeries, macd, rsi, atr, analyze, poolIndex, indexStatus, flowTrend, flowStatus, doubleGoldenCross, bullishAboveBBI };
 });

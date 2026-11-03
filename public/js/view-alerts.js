@@ -21,7 +21,7 @@
       e.preventDefault();
       const d = Object.fromEntries(new FormData(f).entries());
       await api('POST', '/alerts', { code: d.code, type: d.type, value: d.value, ma: d.ma, repeat: !!d.repeat, note: d.note });
-      PF.toast('提醒已添加'); await load();
+      PF.toast('提醒已添加'); f.reset(); sync(); await load();
     }) },
       PF.field('股票', stock), PF.field('条件', typeSel), valueField, maField,
       PF.field('备注', h('input', { name: 'note', maxlength: 80, placeholder: '可选，例如：回踩加仓位' })),
@@ -34,17 +34,20 @@
   function notifyBtn() {
     if (!('Notification' in window)) return null;
     const st = Notification.permission;
-    return h('button', { type: 'button', class: 'btn', disabled: st === 'granted', onclick: async () => { await Notification.requestPermission(); render(); } },
+    return h('button', { type: 'button', class: 'btn', disabled: st === 'granted', onclick: async (e) => { const button = e.currentTarget; await Notification.requestPermission(); button.replaceWith(notifyBtn()); } },
       st === 'granted' ? '浏览器通知已开启' : st === 'denied' ? '浏览器通知被禁止（请在浏览器设置里允许）' : '开启浏览器通知');
   }
 
   function render() {
     const root = $('#alerts-root'); if (!root) return;
     const pre = (PF.state.params || {}).code;
-    root.replaceChildren(
+    // Keep the editor mounted: quote/news updates must not reset values or focus.
+    if (!$('#alerts-live')) root.replaceChildren(
       h('section', { class: 'card' }, h('div', { class: 'card-head' }, h('h2', null, '新增提醒'), notifyBtn()),
         h('p', { class: 'fine' }, '每条提醒只在条件「从不成立变成成立」的那一刻响一次，不会因为一直满足而反复打扰。只能对股池内的股票设置。'),
         A.pool.length ? form(pre) : h('p', { class: 'muted' }, '股池是空的')),
+      h('div', { class: 'stack', id: 'alerts-live' }));
+    $('#alerts-live').replaceChildren(
       h('section', { class: 'card' }, h('h2', null, '我的提醒'),
         A.rules.length ? h('div', { class: 'scroll' }, h('table', null,
           h('thead', null, h('tr', null, ['提醒', '备注', '状态', '触发次数', ''].map((t) => h('th', { class: 'l' }, t)))),

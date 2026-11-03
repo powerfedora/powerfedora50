@@ -1,12 +1,12 @@
 // 看板：大盘 → 股池等权指数（K 线 + 均线判断）→ 行情与技术点位表 → 股池新闻
 (function () {
   const { h, $, fmt, pct, sign, api } = PF;
-  const D = { ov: null, idx: null, news: null, intra: { secid: '1.000001', date: null, data: null, err: null }, range: 120, offset: 0, ruler: { on: false, a: null, b: null }, newsFilter: 'all', filter: 'all', sort: 'chg', dir: -1, q: '', root: null };
+  const D = { ov: null, idx: null, news: null, intra: { secid: '1.000001', date: null, data: null, err: null }, range: 120, offset: 0, ruler: { on: false, a: null, b: null }, indicators: { ma: false, ema: false, bbi: false, boll: false, supertrend: true, donchian: true }, newsFilter: 'all', filter: 'all', sort: 'chg', dir: -1, q: '', root: null };
 
   const COLS = [
-    ['code', '代码', 'l'], ['name', '名称', 'l'], ['sector', '板块', 'l'], ['px', '现价'], ['chg', '涨跌%'], ['amount', '成交额(亿)'], ['volDiff', '较昨日同时(亿)'],
-    ['trend', '趋势', 'l'], ['flowSlope', '量能趋势(20日)', 'l'], ['macdState', 'MACD', 'l'], ['rsi', 'RSI14'], ['s2', '支撑2'], ['s1', '支撑1'], ['r1', '压力1'], ['r2', '压力2'],
-    ['r20', '近20日%'], ['ytd', '年内%'], ['usChg', '对标美股'], ['pe', 'PE(TTM)']
+    ['code', '代码', 'l'], ['name', '名称', 'l'], ['sector', '板块', 'l'], ['px', '现价'], ['chg', '涨跌%'], ['speed', '涨速%'], ['volumeRatio', '量比'], ['amount', '成交额(亿)'], ['volDiff', '较昨日同时(亿)'],
+    ['trend', '趋势', 'l'], ['flowSlope', '量能趋势(20日)', 'l'], ['macdState', 'MACD', 'l'], ['rsi', 'RSI14'],
+    ['r20', '近20日%'], ['rs20', 'RS20 vs 沪深300'], ['ytd', '年内%'], ['usChg', '对标美股'], ['pe', 'PE(TTM)']
   ];
   // 较昨日同一时刻的成交额：多了/少了多少亿；休市后对比的是整天
   const hm = (t) => t.slice(0, 2) + ':' + t.slice(2);
@@ -48,11 +48,15 @@
         h('p', { class: 'lede', id: 'i-flow' }),
         h('div', { class: 'range', id: 'i-range' }, h('span', { class: 'muted small' }, '显示'),
           [60, 120, 250].map((n) => h('button', { type: 'button', class: 'chip', 'data-range': n, 'aria-pressed': String(n === D.range) }, n + ' 天'))),
+        h('div', { class: 'range', id: 'i-indicators', 'aria-label': '股池指数K线指标' },
+          h('span', { class: 'muted small' }, '指标'),
+          [['ma', 'MA（5/10/20/60/120/250）'], ['ema', 'EMA（13/34/55）'], ['bbi', 'BBI'], ['boll', 'BOLL（20,2）'], ['supertrend', 'Supertrend（10,3）'], ['donchian', 'Donchian（20）']]
+            .map(([key, label]) => h('label', { class: 'indicator-toggle' }, h('input', { type: 'checkbox', 'data-indicator': key, checked: D.indicators[key] }), ' ' + label))),
         h('div', { class: 'kbox', id: 'index-chart' }),
         h('p', { class: 'fine', id: 'i-fine' })),
       h('section', { class: 'card', id: 'table-card' },
         h('div', { class: 'card-head' }, h('h2', null, '行情与技术点位'), h('span', { class: 'muted small', id: 'tbl-count' })),
-        h('p', { class: 'fine' }, '点表头排序，点任意一行弹出这只股票的 K 线（均线、成交额、MACD）、点位和新闻。趋势：现价、20 日线、60 日线依次向上为多头，依次向下为空头，其余为震荡。支撑和压力取当前价下方和上方最近的均线或近 20/60 日高低点。量能趋势：看成交额，而不是价格——用近 10 日成交额除以近一年常态（单日暴量封顶），判断这一阶段量能是稳步放大还是萎缩；红色表示放量时价格稳住或上涨，绿色表示放量下跌，灰色表示缩量或走平；另标出堆量、疑似吸筹、放量下跌。鼠标停在上面可看斜率和量能倍数，仅供参考。'),
+        h('p', { class: 'fine' }, '点表头排序，点任意一行弹出这只股票的 K 线（均线、成交额、MACD）、点位和新闻。趋势：现价、20 日线、60 日线依次向上为多头，依次向下为空头，其余为震荡。量能趋势：看成交额，而不是价格——用近 10 日成交额除以近一年常态（单日暴量封顶），判断这一阶段量能是稳步放大还是萎缩；红色表示放量时价格稳住或上涨，绿色表示放量下跌，灰色表示缩量或走平；另标出堆量、疑似吸筹、放量下跌。鼠标停在上面可看斜率和量能倍数，仅供参考。'),
         h('div', { class: 'bar' },
           h('input', { id: 'q', type: 'search', placeholder: '搜代码、名称或板块', 'aria-label': '搜代码、名称或板块', value: D.q }),
           [['all', '全部'], ['多头', '多头'], ['震荡', '震荡'], ['空头', '空头'], ['超买', 'RSI 超买'], ['超卖', 'RSI 超卖'], ['量能放大', '量能放大'], ['量能萎缩', '量能萎缩'], ['堆量吸筹', '堆量/吸筹'], ['放量下跌', '放量下跌']]
@@ -149,7 +153,8 @@
     const sync = () => $('#i-range').querySelectorAll('[data-range]').forEach((x) => x.setAttribute('aria-pressed', String(Number(x.dataset.range) === D.range)));
     D.offset = Math.max(0, Math.min(D.offset, D.idx.bars.length - D.range));
     KChart.drawK($('#index-chart'), D.idx.bars, {
-      mas: [5, 10, 20, 60, 120, 250], range: D.range, offset: D.offset, noWick: true, ruler: D.ruler,
+      mas: D.indicators.ma ? [5, 10, 20, 60, 120, 250] : [], emaPeriods: D.indicators.ema ? [13, 34, 55] : [],
+      bbi: D.indicators.bbi, boll: D.indicators.boll, supertrend: D.indicators.supertrend, donchian: D.indicators.donchian, range: D.range, offset: D.offset, noWick: true, ruler: D.ruler,
       onRange: (n) => { D.range = n; sync(); drawIndexChart(); },
       onPan: (off) => { D.offset = off; drawIndexChart(); }
     });
@@ -189,14 +194,13 @@
       const td = (t, cls) => h('td', { class: cls || '' }, t);
       const tr = h('tr', { tabindex: '0', onclick: () => PF.openStock(r.code, tableCodes), onkeydown: (e) => { if (e.key === 'Enter') PF.openStock(r.code, tableCodes); } },
         td(r.code, 'l mono'), td(r.name, 'l strong'), td(r.sector, 'l muted'),
-        td(fmt(r.px)), td(pct(r.chg), sign(r.chg)), td(r.amount != null ? r.amount.toFixed(1) : '—'),
+        td(fmt(r.px)), td(pct(r.chg), sign(r.chg)), h('td', { class: sign(r.speed), title: '行情源短周期涨跌幅，单位 %' }, pct(r.speed)), h('td', { title: '行情源量比，单位：倍' }, r.volumeRatio == null ? '—' : fmt(r.volumeRatio, 2) + '倍'), td(r.amount != null ? r.amount.toFixed(1) : '—'),
         r.vol ? h('td', { class: sign(r.vol.diff), title: volTip(r.vol) }, volAmt(r.vol) + volPct(r.vol)) : td('—', 'muted'),
         td(r.trend || '—', 'l ' + (r.trend === '多头' ? 'up' : r.trend === '空头' ? 'dn' : 'muted')),
         r.flow ? h('td', { class: 'l ' + (r.flow.bias === 'bull' ? 'up' : r.flow.bias === 'bear' ? 'dn' : 'muted'), title: `量能线近 20 日斜率 ${r.flow.slope.toFixed(3)}/天；当前为近一年常态量能的 ${r.flow.level.toFixed(2)} 倍` }, r.flow.state + (r.flow.flags.length ? ' · ' + r.flow.flags.map((f) => f.split('（')[0]).join('、') : '')) : td('—', 'l muted'),
         td(r.macdState || '—', 'l ' + (String(r.macdState).startsWith('金叉') ? 'up' : 'dn')),
         td(r.rsi != null ? r.rsi.toFixed(1) : '—', r.rsiState === '超买' ? 'up' : r.rsiState === '超卖' ? 'dn' : ''),
-        td(fmt(r.s2)), td(fmt(r.s1)), td(fmt(r.r1)), td(fmt(r.r2)),
-        td(pct(r.r20), sign(r.r20)), td(pct(r.ytd), sign(r.ytd)),
+        td(pct(r.r20), sign(r.r20)), td(pct(r.rs20), sign(r.rs20)), td(pct(r.ytd), sign(r.ytd)),
         td(r.us ? `${r.us.symbol} ${pct(r.us.chg)}` : '—', r.us ? sign(r.us.chg) : 'muted'),
         td(r.pe == null ? '—' : (r.pe < 0 ? '亏损' : r.pe.toFixed(1)), 'muted'));
       tb.append(tr);
@@ -263,6 +267,11 @@
         const b = e.target.closest('[data-range]'); if (!b) return;
         D.range = Number(b.dataset.range); D.offset = 0;
         $('#i-range').querySelectorAll('[data-range]').forEach((x) => x.setAttribute('aria-pressed', String(x === b)));
+        drawIndexChart();
+      });
+      $('#i-indicators').addEventListener('change', (e) => {
+        const input = e.target.closest('[data-indicator]'); if (!input) return;
+        D.indicators[input.dataset.indicator] = input.checked;
         drawIndexChart();
       });
       await load();

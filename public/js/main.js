@@ -45,12 +45,13 @@
     es = new EventSource('/api/events');
     es.addEventListener('update', onServerUpdate);
     es.addEventListener('news', onServerUpdate);
+    es.addEventListener('intelligence', onServerUpdate);
     es.addEventListener('report', () => { PF.toast('新的晨报已生成'); if (PF.state.route === 'report') route(); });
     es.addEventListener('alert', (e) => {
       const ev = JSON.parse(e.data);
       PF.toast('提醒：' + ev.message, 'alert');
       if ('Notification' in window && Notification.permission === 'granted') new Notification('PowerFedora50 提醒', { body: ev.message });
-      if (PF.state.route === 'alerts') route();
+      if (PF.state.route === 'alerts') onServerUpdate();
     });
     es.onerror = () => setStatus('与本地服务的连接断开，正在重连…', true);
     es.onopen = () => onServerUpdate();

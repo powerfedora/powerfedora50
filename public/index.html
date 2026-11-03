@@ -24,7 +24,9 @@
 
   <nav class="tabs" id="nav" aria-label="功能">
     <a href="#/dashboard" data-route="dashboard">看板</a>
+    <a href="#/sectors" data-route="sectors">板块指数</a>
     <a href="#/screener" data-route="screener">在线选股</a>
+    <a href="#/intelligence" data-route="intelligence">股市情报站</a>
     <a href="#/report" data-route="report">晨报</a>
     <a href="#/pool" data-route="pool">股池管理</a>
     <a href="#/alerts" data-route="alerts">提醒</a>
@@ -65,8 +67,11 @@
       <span class="muted small">指标</span>
       <label class="indicator-toggle"><input type="checkbox" data-indicator="ma"> MA（5/10/20/60）</label>
       <label class="indicator-toggle"><input type="checkbox" data-indicator="ema"> EMA（13/34/55）</label>
-      <label class="indicator-toggle"><input type="checkbox" data-indicator="bbi" checked> BBI</label>
-      <label class="indicator-toggle"><input type="checkbox" data-indicator="boll" checked> BOLL（20,2）</label>
+      <label class="indicator-toggle"><input type="checkbox" data-indicator="bbi"> BBI</label>
+      <label class="indicator-toggle"><input type="checkbox" data-indicator="boll"> BOLL（20,2）</label>
+      <label class="indicator-toggle"><input type="checkbox" data-indicator="supertrend" checked> Supertrend（10,3）</label>
+      <label class="indicator-toggle"><input type="checkbox" data-indicator="donchian" checked> Donchian（20）</label>
+      <label class="indicator-toggle"><input type="checkbox" data-indicator="rs20" checked> RS20 vs 沪深300</label>
     </div>
     <div class="kbox" id="d-chart"></div>
     <div class="levels" id="d-levels"></div>
@@ -74,7 +79,7 @@
     <p class="note" id="d-us"></p>
     <h3>最新新闻</h3>
     <div class="news" id="d-news"></div>
-    <p class="fine">K 线为前复权日线，红涨绿跌；可按需显示 MA、EMA、BBI 或 BOLL；中间是成交额，下方是 MACD（12, 26, 9）。止损参考 = 支撑 1 减一个 ATR（14 日平均波幅），只是常见的风控算法示例。</p>
+    <p class="fine">K 线为前复权日线，红涨绿跌；默认显示 Supertrend 与 Donchian（20 日最高/最低价通道），可按需叠加 MA、EMA、BBI、BOLL（20,2）或 RS20 vs 沪深300。RS20 是个股与沪深300同期 20 日涨跌幅之差，单位为百分点；0 轴上方表示跑赢。中间是成交额，下方是 MACD（12, 26, 9）。Supertrend 以 ATR（10）和 3 倍波幅绘制，红线为多头、绿线为空头，仅作趋势与风控参考。</p>
   </div>
 </dialog>
 
@@ -87,7 +92,9 @@
 <script src="js/stock-dialog.js"></script>
 <script src="js/view-dashboard.js"></script>
 <script src="js/view-screener.js"></script>
+<script src="js/view-sectors.js"></script>
 <script src="js/view-report.js"></script>
+<script src="js/view-intelligence.js"></script>
 <script src="js/view-pool.js"></script>
 <script src="js/view-alerts.js"></script>
 <script src="js/view-journal.js"></script>

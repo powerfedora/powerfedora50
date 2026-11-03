@@ -34,6 +34,10 @@ class Service extends EventEmitter {
     this.bars = {};        // 历史日线（不含今日实时），key = 代码
     this.barsAt = {};      // 日线下载时间
     this.live = {};        // 历史 + 今日实时
+    this.benchmark = store.read('kline/benchmark-000300.json', { bars: [], fetchedAt: 0 }); // 沪深300 日线，用作 RS 基准
+    if (!Array.isArray(this.benchmark.bars)) this.benchmark = { bars: [], fetchedAt: 0 };
+    this.benchmarkLive = [];
+    this.rs = {};          // code -> { value, stockReturn, benchmarkReturn, ... }
     this.an = {};          // 技术分析
     this.minutes = {};     // secid -> 最近 5 个交易日的分时 [{date, pts:[[HHMM, 累计成交额, 价格]]}]
     this.vol = {};         // secid -> 较上一交易日同一时刻的成交额对比
@@ -79,6 +83,13 @@ class Service extends EventEmitter {
           this.store.write(`kline/${code}.json`, { fetchedAt: this.barsAt[code], bars });
         } catch (e) { fail++; this.status.errors['kline:' + code] = e.message; }
       });
+      try {
+        const bars = await this.provider.kline('1.000300', limit);
+        if (!bars.length) throw new Error('空数据');
+        this.benchmark = { bars, fetchedAt: Date.now() };
+        this.store.write('kline/benchmark-000300.json', this.benchmark);
+        delete this.status.errors.benchmark;
+      } catch (e) { this.status.errors.benchmark = e.message; }
       if (codes.length) this.status.historyAt = Date.now();
       if (!fail) for (const k of Object.keys(this.status.errors)) if (k.startsWith('kline:')) delete this.status.errors[k];
       this.compute();
@@ -273,13 +284,25 @@ class Service extends EventEmitter {
     return base;
   }
 
+  withBenchmarkLive() {
+    const base = this.benchmark.bars.slice();
+    const q = this.cnIdx.find((x) => x.name === '沪深300')?.q;
+    if (!q || !q.price || !q.open || !q.time) return base;
+    const day = sh(new Date(q.time)).date;
+    while (base.length && base[base.length - 1].day >= day) base.pop();
+    base.push({ day, open: q.open, high: q.high, low: q.low, close: q.price, amount: 0 });
+    return base;
+  }
+
   compute() {
-    const live = {}; this.an = {}; this.flow = {};
+    const live = {}; this.an = {}; this.flow = {}; this.rs = {};
     for (const code of this.pool.codes()) {
       live[code] = this.withLive(code); this.an[code] = IND.analyze(live[code]);
       this.flow[code] = IND.flowStatus(live[code], IND.flowTrend(live[code])); // 量能趋势（成交额），见 indicators.js
     }
     this.live = live;
+    this.benchmarkLive = this.withBenchmarkLive();
+    for (const code of this.pool.codes()) this.rs[code] = IND.relativeStrength(live[code], this.benchmarkLive, 20);
     const s = this.settings.get();
     this.index = IND.poolIndex(live, s.indexBase, s.indexBaseDate);
     this.indexStatus = this.index.length > 60 ? IND.indexStatus(this.index) : null;
@@ -296,10 +319,11 @@ class Service extends EventEmitter {
     const q = this.quotes[p.code] || {}, a = this.an[p.code] || {};
     return {
       code: p.code, name: p.name, sector: p.sector,
-      px: q.price ?? null, chg: q.chg ?? null, amount: q.amount != null ? q.amount / 1e8 : null, pe: q.pe ?? null,
+      px: q.price ?? null, chg: q.chg ?? null, speed: q.speed ?? null, volumeRatio: q.volumeRatio ?? null, amount: q.amount != null ? q.amount / 1e8 : null, pe: q.pe ?? null,
       trend: a.trend, macdState: a.macdState, rsi: a.rsi, rsiState: a.rsiState,
       s1: a.s1, s2: a.s2, r1: a.r1, r2: a.r2, r20: a.r20, ytd: a.ytd,
       ma20: a.ma ? a.ma[20] : null, ma60: a.ma ? a.ma[60] : null,
+          rs20: this.rs[p.code] ? this.rs[p.code].value : null,
       flow: (this.flow && this.flow[p.code]) ? { state: this.flow[p.code].state, slope: this.flow[p.code].slope, level: this.flow[p.code].level, bias: this.flow[p.code].bias, flags: this.flow[p.code].flags.map((f) => f.split('（')[0]) } : null,
       vol: this.vol[secidOf(p.code)] || null, us: this.usView(p), newsCount: (this.news.data[p.code] || []).length
     };
@@ -363,6 +387,7 @@ class Service extends EventEmitter {
     if (!p) return null;
     return {
       item: p, quote: this.quotes[code] || null, analysis: this.an[code] || null, bars: this.live[code] || [],
+      benchmarkBars: (this.benchmarkLive || []).map((b) => ({ day: b.day, close: b.close })),
       news: this.news.data[code] ? annotate(this.news.data[code]) : null, us: this.usView(p)
     };
   }
@@ -375,14 +400,18 @@ class Service extends EventEmitter {
       // “启动”只看最近 10 个交易日完成的信号，避免历史交叉长期留在候选里。
       const pair = IND.doubleGoldenCross(bars).filter((x) => x.signalIndex >= bars.length - 10).at(-1);
       const trend = IND.bullishAboveBBI(bars);
-      if (!pair || !trend.ok) continue;
+      const dmi = IND.dmi(bars), i = bars.length - 1;
+      const plusDI = dmi.plusDI[i], minusDI = dmi.minusDI[i], adx = dmi.adx[i], prevAdx = dmi.adx[i - 1];
+      const dmiOk = Number.isFinite(plusDI) && Number.isFinite(minusDI) && Number.isFinite(adx) && Number.isFinite(prevAdx)
+        && plusDI > minusDI && adx > 20 && adx > prevAdx;
+      if (!pair || !trend.ok || !dmiOk) continue;
       const q = this.quotes[p.code] || {}, a = this.an[p.code] || {};
       out.push({
         code: p.code, name: p.name, sector: p.sector, px: q.price ?? null, chg: q.chg ?? null,
         macdDay: bars[pair.macdIndex].day, flowDay: bars[pair.flowIndex].day,
         signalDay: bars[pair.signalIndex].day, gap: Math.abs(pair.macdIndex - pair.flowIndex),
         macd: a.macdState || null, flow: this.flow[p.code] ? this.flow[p.code].state : null,
-        bbi: trend.bbi
+            bbi: trend.bbi, plusDI, minusDI, adx
       });
     }
     return out.sort((a, b) => b.signalDay.localeCompare(a.signalDay) || (b.chg || -Infinity) - (a.chg || -Infinity));

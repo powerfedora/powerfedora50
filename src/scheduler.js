@@ -12,8 +12,8 @@ const { generate, Reports } = require('./report');
 const log = (...a) => console.log(`[${sh().str}]`, ...a);
 
 class Scheduler {
-  constructor({ service, reports, clock = () => new Date() }) {
-    Object.assign(this, { service, reports, clock });
+  constructor({ service, reports, clock = () => new Date(), sectors, intelligence }) {
+    Object.assign(this, { service, reports, clock, sectors, intelligence });
     this.last = {};
     this.timer = null;
     this.running = new Set();
@@ -56,6 +56,11 @@ class Scheduler {
     if (this.due('hotspots', isTradingTime(d) ? 15000 : 600000, now)) this.run('hotspots', () => this.service.refreshHotspots(t.date));
     if (this.due('us', 600000, now)) this.run('us', () => this.service.refreshUs());
     if (this.due('news', s.newsPollMin * 60000, now)) this.run('news', () => this.service.refreshNews());
+
+    // Persist daily sector rotation even when its page is closed.
+    if (this.sectors && this.due('sectors', 60000, now)) this.run('sectors', () => this.sectors.get());
+
+    if (this.intelligence && !this.service.provider.mock && this.due('intelligence', 20000, now)) this.run('intelligence', () => this.intelligence.refresh());
 
     const rm = hmToMin(s.reportTime);
     if (rm != null && t.min >= rm && !this.reports.has(t.date) && !this.running.has('report') && this.due('report', 600000, now)) {

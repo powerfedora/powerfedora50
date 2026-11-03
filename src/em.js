@@ -39,7 +39,7 @@ async function retry(fn, times = 3) {
   throw err;
 }
 
-const QFIELDS = 'f2,f3,f4,f5,f6,f8,f9,f12,f13,f14,f15,f16,f17,f18,f20,f23,f124';
+const QFIELDS = 'f22,f10,f2,f3,f4,f5,f6,f8,f9,f12,f13,f14,f15,f16,f17,f18,f20,f23,f124';
 
 async function quotes(secids) {
   const out = [];
@@ -52,7 +52,7 @@ async function quotes(secids) {
       out.push({
         secid: x.f13 + '.' + x.f12, code: String(x.f12), name: String(x.f14 || '').replace(/\s/g, ''),
         price: num(x.f2), chg: num(x.f3), chgAmt: num(x.f4), vol: num(x.f5), amount: num(x.f6),
-        turnover: num(x.f8), pe: num(x.f9), high: num(x.f15), low: num(x.f16), open: num(x.f17), prevClose: num(x.f18),
+        speed: num(x.f22), volumeRatio: num(x.f10), turnover: num(x.f8), pe: num(x.f9), high: num(x.f15), low: num(x.f16), open: num(x.f17), prevClose: num(x.f18),
         mcap: num(x.f20), pb: num(x.f23), time: x.f124 ? Number(x.f124) * 1000 : null
       });
     }

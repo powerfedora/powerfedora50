@@ -26,25 +26,31 @@
     const emaArr = {}; emaPeriods.forEach((n) => { emaArr[n] = IND.ema(C, n); });
     const bbi = opts.bbi ? IND.bbi(C) : null;
     const boll = opts.boll ? IND.boll(C) : null;
+    const donchian = opts.donchian ? IND.donchian(bars, 20) : null;
+    const supertrend = opts.supertrend ? IND.supertrend(bars, 10, 3) : null;
+    const rs20 = opts.rs20 ? IND.relativeStrengthSeries(bars, opts.benchmarkBars, 20) : null;
     const { dif, dea, hist } = IND.macd(C);
     const end = N - Math.max(0, Math.min(opts.offset || 0, N - 2)), from = Math.max(0, end - (opts.range || 120)), idx = []; for (let i = from; i < end; i++) idx.push(i);
 
     const W = Math.max(320, container.clientWidth || 800), ml = 4, mr = 56;
-    const hP = W < 600 ? 220 : 280, hV = 64, hM = 86, hF = opts.flow === false ? 0 : 86, gap = 18, top = 6;
-    const yP0 = top, yV0 = yP0 + hP + gap, yM0 = yV0 + hV + gap, yF0 = yM0 + hM + gap, H = (hF ? yF0 + hF : yM0 + hM) + 22;
+    const hP = W < 600 ? 220 : 280, hV = 64, hM = 86, hF = opts.flow === false ? 0 : 86, hR = rs20 ? 86 : 0, gap = 18, top = 6;
+    const yP0 = top, yV0 = yP0 + hP + gap, yM0 = yV0 + hV + gap, yF0 = yM0 + hM + gap, yR0 = yF0 + (hF ? hF + gap : 0), H = (hR ? yR0 + hR : (hF ? yF0 + hF : yM0 + hM)) + 22;
     const FT = hF ? IND.flowTrend(bars) : null; // 量能趋势线（成交额），见 indicators.js
     const plotW = W - ml - mr, slot = plotW / idx.length, bw = Math.max(1, slot * 0.7);
     const xc = (k) => ml + slot * k + slot / 2;
 
-    let lo = Infinity, hi = -Infinity, vMax = 0, mMax = 0, fLo = Infinity, fHi = -Infinity;
+    let lo = Infinity, hi = -Infinity, vMax = 0, mMax = 0, fLo = Infinity, fHi = -Infinity, rsLo = Infinity, rsHi = -Infinity;
     idx.forEach((i) => {
       lo = Math.min(lo, opts.noWick ? Math.min(bars[i].open, bars[i].close) : bars[i].low); hi = Math.max(hi, opts.noWick ? Math.max(bars[i].open, bars[i].close) : bars[i].high);
       mas.forEach((n) => { const v = maArr[n][i]; if (v != null) { lo = Math.min(lo, v); hi = Math.max(hi, v); } });
       emaPeriods.forEach((n) => { const v = emaArr[n][i]; if (v != null) { lo = Math.min(lo, v); hi = Math.max(hi, v); } });
       if (bbi && bbi[i] != null) { lo = Math.min(lo, bbi[i]); hi = Math.max(hi, bbi[i]); }
       if (boll) [boll.upper[i], boll.mid[i], boll.lower[i]].forEach((v) => { if (v != null) { lo = Math.min(lo, v); hi = Math.max(hi, v); } });
+      if (donchian) [donchian.upper[i], donchian.mid[i], donchian.lower[i]].forEach((v) => { if (v != null) { lo = Math.min(lo, v); hi = Math.max(hi, v); } });
+      if (supertrend && supertrend.line[i] != null) { lo = Math.min(lo, supertrend.line[i]); hi = Math.max(hi, supertrend.line[i]); }
       vMax = Math.max(vMax, bars[i].amount || 0);
       if (FT) [FT.line[i], FT.sig[i]].forEach((v) => { if (v != null) { fLo = Math.min(fLo, v); fHi = Math.max(fHi, v); } });
+      if (rs20 && Number.isFinite(rs20[i])) { rsLo = Math.min(rsLo, rs20[i]); rsHi = Math.max(rsHi, rs20[i]); }
       mMax = Math.max(mMax, Math.abs(hist[i]), Math.abs(dif[i]), Math.abs(dea[i]));
     });
     const pad = (hi - lo) * 0.04; lo -= pad; hi += pad;
@@ -53,6 +59,12 @@
     if (FT) { fLo = Math.min(fLo, 1); fHi = Math.max(fHi, 1); } // 1.0 = 近一年常态量能，作为基准线
     const fPad = (fHi - fLo) * 0.08 || 0.1;
     const yF = (v) => yF0 + hF - (v - (fLo - fPad)) / ((fHi - fLo) + 2 * fPad) * hF;
+    if (rs20) {
+      if (!Number.isFinite(rsLo)) { rsLo = -1; rsHi = 1; }
+      rsLo = Math.min(rsLo, 0); rsHi = Math.max(rsHi, 0);
+    }
+    const rsPad = (rsHi - rsLo) * 0.08 || 1;
+    const yR = (v) => yR0 + hR - (v - (rsLo - rsPad)) / ((rsHi - rsLo) + 2 * rsPad) * hR;
     const yM = (v) => yM0 + hM / 2 - (v / (mMax || 1)) * (hM / 2);
 
     const legend = document.createElement('div'); legend.className = 'k-legend';
@@ -85,6 +97,20 @@
       el('line', { x1: ml, x2: W - mr, y1: yF(1), y2: yF(1), class: 'k-axis', 'stroke-dasharray': '4 3' }, svg);
       grid(niceTicks(fLo - fPad, fHi + fPad, 3).filter((t) => t >= fLo - fPad && t <= fHi + fPad), yF, (t) => (+t.toFixed(2)).toString());
     }
+    let setRsReadout = () => {};
+    if (rs20) {
+      // 与量能子图一致：左上角读数吸附到鼠标所在交易日，避免只看曲线时无法精确读值。
+      const rsReadout = el('text', { x: ml + 2, y: yR0 + 11, class: 'k-tick' }, svg);
+      setRsReadout = (i) => {
+        const v = rs20[i];
+        rsReadout.replaceChildren();
+        const add = (text, color) => { const t = el('tspan', color ? { fill: color } : {}, rsReadout); t.textContent = text; };
+        add(`RS20 vs 沪深300（百分点）　${bars[i].day}　`);
+        add(Number.isFinite(v) ? `${v >= 0 ? '+' : ''}${v.toFixed(2)} 点` : '数据不足', Number.isFinite(v) ? (v > 0 ? 'var(--up)' : v < 0 ? 'var(--dn)' : 'var(--rs20)') : null);
+      };
+      el('line', { x1: ml, x2: W - mr, y1: yR(0), y2: yR(0), class: 'k-axis', 'stroke-dasharray': '4 3' }, svg);
+      grid(niceTicks(rsLo - rsPad, rsHi + rsPad, 3).filter((t) => t >= rsLo - rsPad && t <= rsHi + rsPad), yR, (t) => (+t.toFixed(2)).toString());
+    }
 
     const gC = el('g', {}, svg);
     idx.forEach((i, k) => {
@@ -109,8 +135,29 @@
       path(boll.upper, yP, 'k-line k-boll', 'var(--boll)');
       path(boll.lower, yP, 'k-line k-boll', 'var(--boll)');
     }
+    if (donchian) {
+      path(donchian.mid, yP, 'k-line k-donchian-mid', 'var(--donchian)');
+      path(donchian.upper, yP, 'k-line k-donchian', 'var(--donchian)');
+      path(donchian.lower, yP, 'k-line k-donchian', 'var(--donchian)');
+    }
+    if (supertrend) {
+      path(supertrend.line.map((v, i) => supertrend.direction[i] === 1 ? v : null), yP, 'k-line k-supertrend', 'var(--up)');
+      path(supertrend.line.map((v, i) => supertrend.direction[i] === -1 ? v : null), yP, 'k-line k-supertrend', 'var(--dn)');
+    }
     path(dif, yM, 'k-line', 'var(--dif)'); path(dea, yM, 'k-line', 'var(--dea)');
     if (FT) { path(FT.sig, yF, 'k-line', 'var(--ma2)'); path(FT.line, yF, 'k-line', 'var(--accent)'); }
+    if (rs20) {
+      // 每一段按终点当日的 RS20 着色：>10 为红色，否则为蓝色；阈值切换处不断线。
+      const drawRsSegments = (hot, color) => {
+        for (let k = 1; k < idx.length; k++) {
+          const prev = idx[k - 1], i = idx[k], v = rs20[i], pv = rs20[prev];
+          if (!Number.isFinite(v) || !Number.isFinite(pv) || (v > 10) !== hot) continue;
+          el('path', { d: `M${xc(k - 1).toFixed(1)},${yR(pv).toFixed(1)}L${xc(k).toFixed(1)},${yR(v).toFixed(1)}`, class: 'k-line k-rs20', style: 'stroke:' + color }, svg);
+        }
+      };
+      drawRsSegments(true, 'var(--up)');
+      drawRsSegments(false, 'var(--dea)');
+    }
     // 量能金叉/死叉标记：金叉（快线上穿慢线 = 量能开始放大）按同期价格着色——红：价稳或上涨（放量上涨/堆量），绿：价格下跌（放量下跌）；死叉（量能转弱）灰色。
     // 交叉后 3 根内又穿回去的算没站稳，不标
     if (FT) {
@@ -154,12 +201,22 @@
     const show = (i) => {
       const b = bars[i], pc = i ? bars[i - 1].close : b.open, ch = (b.close / pc - 1) * 100;
       setFlowReadout(i);
+      setRsReadout(i);
       const items = [['日期', b.day], ['开', f2(b.open)], ...(opts.noWick ? [] : [['高', f2(b.high)], ['低', f2(b.low)]]), ['收', f2(b.close), ch],
         ['涨跌', (ch > 0 ? '+' : '') + ch.toFixed(2) + '%', ch], ['额', (b.amount || 0).toFixed(1) + '亿']];
       mas.forEach((n, j) => items.push(['MA' + n, f2(maArr[n][i]), null, MA_COLORS[j % MA_COLORS.length]]));
       emaPeriods.forEach((n, j) => items.push(['EMA' + n, f2(emaArr[n][i]), null, MA_COLORS[(j + 3) % MA_COLORS.length]]));
       if (bbi) items.push(['BBI', f2(bbi[i]), null, 'var(--bbi)']);
       if (boll) items.push(['BOLL中', f2(boll.mid[i]), null, 'var(--boll)'], ['BOLL上', f2(boll.upper[i]), null, 'var(--boll)'], ['BOLL下', f2(boll.lower[i]), null, 'var(--boll)']);
+      if (donchian) items.push(['DC中', f2(donchian.mid[i]), null, 'var(--donchian)'], ['DC上', f2(donchian.upper[i]), null, 'var(--donchian)'], ['DC下', f2(donchian.lower[i]), null, 'var(--donchian)']);
+      if (supertrend && supertrend.line[i] != null) {
+        const upTrend = supertrend.direction[i] === 1;
+        items.push(['Supertrend', f2(supertrend.line[i]) + '（' + (upTrend ? '多头' : '空头') + '）', upTrend ? 1 : -1, upTrend ? 'var(--up)' : 'var(--dn)']);
+      }
+      if (rs20) {
+        const v = rs20[i];
+        items.push(['RS20 vs 沪深300', Number.isFinite(v) ? `${v >= 0 ? '+' : ''}${v.toFixed(2)} 点` : '数据不足', v, 'var(--rs20)']);
+      }
       if (opts.isLimitUp && opts.isLimitUp(bars, i)) {
         const detail = opts.limitReasons && opts.limitReasons[b.day];
         const text = detail ? (detail.reason || '当日复盘暂未给出题材原因') : '正在查询当日涨停原因…';
